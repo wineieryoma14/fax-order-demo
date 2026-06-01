@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAX発注書自動転記AI</title>
+<style>
+  :root{ --blue:#2563EB; --orange:#F97316; --green:#0f9d58; --grid:#d0d7de; --gutter:#f6f8fa; --ink:#1f2937; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+        background:#f5f7fb; color:var(--ink); }
+  header{ background:#fff; border-bottom:2px solid var(--blue);
+          padding:14px 24px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .logo{ width:34px; height:34px; border-radius:8px; background:var(--blue); color:#fff;
+         display:flex; align-items:center; justify-content:center; font-weight:800; }
+  header h1{ margin:0; font-size:19px; }
+  header p{ margin:2px 0 0; font-size:12px; color:#64748b; }
+  .chip{ background:#eff4ff; color:var(--blue); border:1px solid #c7d7fe; border-radius:999px;
+         padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; }
+  .settings{ display:none; margin:12px 24px 0; background:#fff7ed;
+             border:1px solid #fed7aa; border-radius:10px; padding:12px 16px; font-size:13px; line-height:1.7; }
+  main{ padding:18px 24px; }
+  .dropzone{ background:#fff; border:2px dashed #b6c2d4; border-radius:14px; padding:26px;
+             text-align:center; transition:all .2s; margin-bottom:14px; }
+  .dropzone.hover{ border-color:var(--orange); background:#fff7ed; }
+  .dz-big{ font-size:17px; font-weight:700; }
+  .dz-sub{ font-size:12px; color:#64748b; margin:6px 0 14px; }
+  .btn{ border:none; border-radius:10px; padding:11px 18px; font-size:14px; font-weight:700; cursor:pointer; }
+  .btn-o{ background:var(--orange); color:#fff; }
+  .btn-g{ background:var(--green); color:#fff; }
+  .btn-ghost{ background:#fff; color:#475569; border:1px solid var(--grid); }
+  .actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .status{ font-size:13px; color:var(--blue); }
+  .status.done{ color:#16a34a; font-weight:600; }
+  .result{ background:#fff; border:1px solid var(--grid); border-radius:10px; overflow:hidden; }
+  .result-tab{ background:var(--green); color:#fff; font-size:13px; font-weight:600; padding:8px 14px;
+               display:flex; justify-content:space-between; align-items:center; }
+  .result-tab a{ color:#fff; text-decoration:underline; font-size:12px; }
+  .scroll{ overflow:auto; }
+  table.grid{ border-collapse:collapse; width:100%; font-size:13px; }
+  .grid th,.grid td{ border:1px solid var(--grid); padding:7px 9px; white-space:nowrap; }
+  .grid thead th{ background:#eef2ff; color:#334155; font-weight:600; }
+  .grid td.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  .grid .empty td{ color:#94a3b8; text-align:center; padding:18px; }
+  tbody tr.data{ opacity:0; transform:translateY(6px); transition:all .35s; }
+  tbody tr.data.show{ opacity:1; transform:none; }
+  tbody tr.flash td{ background:#fff7ed; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">AI</div>
+    <div>
+      <h1>FAX発注書自動転記AI</h1>
+      <p>FAX・PDF・画像を、御社のスプレッドシートへ自動で入力</p>
+    </div>
+  </div>
+  <button class="chip" id="settingsBtn">⚙ 会社設定：マルワ製作所（架空） ▾</button>
+</header>
+
+<div class="settings" id="settings">
+  <strong>📌 これはデモ用の架空の会社です</strong><br>
+  マルワ製作所（東大阪・金属加工／社長＋社員8名／取扱：シャフト・ブッシュ・フランジ）。<br>
+  この設定を<b>御社の会社名・取扱品・取引先に書き換えれば、そのまま御社でも使えます。</b>
+</div>
+
+<main>
+  <div class="dropzone" id="drop">
+    <div class="dz-big">📄 ここに発注書（PDF・画像）をドラッグ＆ドロップ</div>
+    <div class="dz-sub">デスクトップから発注書を放り込むと、AIが読み取って御社のスプレッドシートに自動転記します</div>
+    <button class="btn btn-o" id="sample">サンプル発注書3枚を投入</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-g" id="openBtn" style="display:none">📊 スプレッドシートを開く →</button>
+    <button class="btn btn-ghost" id="clearBtn">🗑 データをクリア</button>
+    <span class="status" id="status"></span>
+  </div>
+
+  <div class="result">
+    <div class="result-tab">
+      <span>📊 AIが読み取った内容（御社のスプレッドシートへ転記）</span>
+      <a href="#" id="openLink" style="display:none">開く →</a>
+    </div>
+    <div class="scroll">
+      <table class="grid">
+        <thead><tr id="hdr"></tr></thead>
+        <tbody id="rows"><tr class="empty"><td colspan="9">発注書を投入すると、ここに読み取り結果が表示されます</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+  // ===== 設定（GASをデプロイしたら埋める）=====
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbyZpeE34_p1TheRrPtgB4_3MH_l51fug5WrUhrfNFeYZ2IJa-b6JWRKwPuV5A-JvG_jzw/exec";
+  const SHEET_URL = "https://docs.google.com/spreadsheets/d/1JvYjC5gaS96Hq67XL09pP9KqGmN5NVdkRmHXWrL7OCM/edit";
+  // ===========================================
+
+  const COLS = ["受注日","取引先","発注No","品番","品名","数量","単価","金額","納期"];
+  const NUMIDX = {5:1,6:1,7:1};
+  const DEMO = [
+    ["2026/06/15","株式会社カネシン工業","P-1043","BSH-200","ブッシュ",100,480,48000,"2026/06/30"],
+    ["2026/06/16","大東精工株式会社","P-1044","SFT-50","シャフト",30,1200,36000,"2026/07/05"],
+    ["2026/06/16","みやび金属株式会社","P-1045","FLG-80","フランジ",60,900,54000,"2026/07/03"],
+  ];
+  const SAMPLES = ["samples/order_1.png","samples/order_2.png","samples/order_3.png"];
+  const yen = n => isNaN(Number(n)) ? n : Number(n).toLocaleString("ja-JP");
+  const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+  document.getElementById("hdr").innerHTML = COLS.map(c=>`<th>${c}</th>`).join("");
+  const rows = document.getElementById("rows");
+  const status = document.getElementById("status");
+  const openBtn = document.getElementById("openBtn");
+  const openLink = document.getElementById("openLink");
+  let busy = false, emptyCleared = false, sheetUrl = SHEET_URL;
+
+  function setOpen(url){
+    if(!url) return; sheetUrl = url;
+    openBtn.style.display = "inline-block";
+    openLink.style.display = "inline";
+    openBtn.onclick = ()=> window.open(sheetUrl, "_blank");
+    openLink.href = sheetUrl;
+  }
+  if(SHEET_URL) setOpen(SHEET_URL);
+
+  function addRow(d){
+    if(!emptyCleared){ rows.innerHTML=""; emptyCleared=true; }
+    const tr = document.createElement("tr");
+    tr.className = "data flash";
+    tr.innerHTML = d.map((v,i)=> NUMIDX[i] ? `<td class="num">${yen(v)}</td>` : `<td>${v}</td>`).join("");
+    rows.appendChild(tr);
+    requestAnimationFrame(()=>tr.classList.add("show"));
+    setTimeout(()=>tr.classList.remove("flash"), 700);
+  }
+
+  // 画像をバックエンド(GAS)に送って読み取り。GAS未設定ならnull（→ローカルfallback）
+  async function sendImage(b64, mime, name){
+    if(!GAS_URL) return null;
+    const res = await fetch(GAS_URL, { method:"POST",
+      headers:{ "Content-Type":"text/plain;charset=utf-8" },   // preflight回避
+      body: JSON.stringify({ image:b64, mime:mime, filename:name }) });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || "読み取り失敗");
+    if(data.sheetUrl) setOpen(data.sheetUrl);
+    return data.row;
+  }
+
+  const fileToB64 = file => new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=> resolve({ b64: r.result.split(",")[1], mime: file.type || "image/png", name: file.name || "発注書" });
+    r.onerror = reject; r.readAsDataURL(file);
+  });
+  async function urlToB64(url){
+    const bust = url + (url.includes("?")?"&":"?") + "v=" + Date.now();
+    const blob = await (await fetch(bust, { cache:"no-store" })).blob();
+    const base = url.split("/").pop().split("?")[0];
+    return await fileToB64(new File([blob], base, { type: blob.type }));
+  }
+
+  async function processList(items){
+    if(busy) return; busy = true;
+    status.className = "status"; status.textContent = "AIが発注書を読み取り中…";
+    let added = 0, fb = 0;
+    for(const it of items){
+      try{
+        let row = await sendImage(it.b64, it.mime, it.name);
+        if(!row){ row = DEMO[fb % DEMO.length]; fb++; }   // GAS未設定時のfallback
+        addRow(row); added++;
+        await sleep(550);
+      }catch(err){
+        status.className = "status"; status.textContent = "⚠ 読み取りエラー: " + err.message;
+        busy = false; return;
+      }
+    }
+    status.className = "status done"; status.textContent = `✓ 発注書${added}件を自動転記しました（手入力ゼロ）`;
+    busy = false;
+  }
+
+  document.getElementById("settingsBtn").addEventListener("click", ()=>{
+    const s = document.getElementById("settings");
+    s.style.display = s.style.display==="block" ? "none" : "block";
+  });
+
+  document.getElementById("sample").addEventListener("click", async ()=>{
+    if(busy) return;
+    const items = [];
+    for(const s of SAMPLES){ try{ items.push(await urlToB64(s)); }catch(e){ items.push({b64:null,mime:null}); } }
+    processList(items);
+  });
+
+  // 発注書データを全部消す（本物のシートも空にする）
+  document.getElementById("clearBtn").addEventListener("click", async ()=>{
+    if(busy) return;
+    if(!confirm("発注書データを全部消します。よろしいですか？")) return;
+    if(GAS_URL){
+      try{
+        busy = true; status.className = "status"; status.textContent = "クリア中…";
+        const res = await fetch(GAS_URL, { method:"POST",
+          headers:{ "Content-Type":"text/plain;charset=utf-8" },
+          body: JSON.stringify({ action:"clear" }) });
+        const data = await res.json();
+        if(!data.ok) throw new Error(data.error || "クリア失敗");
+        busy = false;
+      }catch(err){
+        status.className = "status"; status.textContent = "⚠ クリア失敗: " + err.message; busy = false; return;
+      }
+    }
+    rows.innerHTML = `<tr class="empty"><td colspan="${COLS.length}">発注書を投入すると、ここに読み取り結果が表示されます</td></tr>`;
+    emptyCleared = false;
+    status.className = "status done"; status.textContent = "✓ データをクリアしました";
+  });
+
+  const drop = document.getElementById("drop");
+  drop.addEventListener("dragover", e=>{ e.preventDefault(); drop.classList.add("hover"); });
+  drop.addEventListener("dragleave", ()=> drop.classList.remove("hover"));
+  drop.addEventListener("drop", async e=>{
+    e.preventDefault(); drop.classList.remove("hover");
+    const files = [...e.dataTransfer.files].filter(f=>/image\/|pdf/.test(f.type));
+    const list = files.length ? await Promise.all(files.map(fileToB64)) : [{b64:null,mime:null}];
+    processList(list);
+  });
+</script>
+</body>
+</html>
