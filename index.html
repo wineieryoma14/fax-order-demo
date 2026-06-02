@@ -18,8 +18,23 @@
   header p{ margin:2px 0 0; font-size:12px; color:#64748b; }
   .chip{ background:#eff4ff; color:var(--blue); border:1px solid #c7d7fe; border-radius:999px;
          padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; }
-  .settings{ display:none; margin:12px 24px 0; background:#fff7ed;
-             border:1px solid #fed7aa; border-radius:10px; padding:12px 16px; font-size:13px; line-height:1.7; }
+  .settings{ display:none; margin:12px 24px 0; }
+  .company-card{ background:#fff; border:1px solid var(--grid); border-radius:12px; padding:18px 20px; }
+  .cc-head{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .cc-name{ font-size:20px; font-weight:800; }
+  .badge{ background:#fef3c7; color:#92400e; border:1px solid #fde68a; border-radius:6px; font-size:11px; font-weight:700; padding:2px 8px; }
+  .cc-edit{ margin-left:auto; padding:6px 12px; font-size:12px; }
+  .cc-grid{ display:grid; grid-template-columns:max-content 1fr; gap:9px 16px; margin:0 0 12px; align-items:start; }
+  .cc-grid dt{ color:#64748b; font-size:13px; padding-top:2px; }
+  .cc-grid dd{ margin:0; font-size:14px; }
+  .cc-label{ color:#64748b; font-size:12px; margin-bottom:4px; }
+  .cc-pains{ background:#f8fafc; border-radius:8px; padding:10px 14px; margin-bottom:12px; }
+  .cc-pains ul{ margin:6px 0 0; padding-left:18px; }
+  .cc-pains li{ font-size:14px; margin:3px 0; }
+  .cc-note{ color:#92400e; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:10px 14px; font-size:13px; line-height:1.6; }
+  .cc-input{ width:100%; border:1px solid var(--grid); border-radius:6px; padding:6px 8px; font-size:14px; font-family:inherit; }
+  .cc-fic{ display:block; font-size:13px; color:#475569; margin:4px 0 10px; }
+  .cc-actions{ display:flex; gap:8px; }
   main{ padding:18px 24px; }
   .dropzone{ background:#fff; border:2px dashed #b6c2d4; border-radius:14px; padding:26px;
              text-align:center; transition:all .2s; margin-bottom:14px; }
@@ -60,11 +75,7 @@
   <button class="chip" id="settingsBtn">⚙ 会社設定：マルワ製作所（架空） ▾</button>
 </header>
 
-<div class="settings" id="settings">
-  <strong>📌 これはデモ用の架空の会社です</strong><br>
-  マルワ製作所（東大阪・金属加工／社長＋社員8名／取扱：シャフト・ブッシュ・フランジ）。<br>
-  この設定を<b>御社の会社名・取扱品・取引先に書き換えれば、そのまま御社でも使えます。</b>
-</div>
+<div class="settings" id="settings"></div>
 
 <main>
   <div class="dropzone" id="drop">
@@ -183,6 +194,77 @@
     const s = document.getElementById("settings");
     s.style.display = s.style.display==="block" ? "none" : "block";
   });
+
+  // ===== 会社設定（表示＋編集／ブラウザに保存）=====
+  const COMPANY_KEY = "fax_company";
+  const COMPANY_DEFAULT = {
+    name:"マルワ製作所", fictional:true,
+    industry:"精密切削加工（旋盤・フライス）の町工場",
+    location:"大阪府東大阪市",
+    employees:"社長＋社員8名（パート含む）",
+    products:"シャフト・ブッシュ・フランジ などの精密金属部品（試作〜小ロット）",
+    clients:"株式会社カネシン工業／大東精工株式会社／みやび金属株式会社",
+    pains:"見積もりは社長の勘で、社長しか出せない\nFAX・発注書を社員が毎日Excelに手入力\n取引先メールの返信に追われる",
+    note:"これはデモ用の架空の会社です。御社の会社名・取扱品・取引先に書き換えれば、そのまま御社でも使えます。"
+  };
+  const esc = s => String(s==null?"":s).replace(/[&<>]/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;" }[m]));
+  const escA = s => esc(s).replace(/"/g,"&quot;");
+  const cval = id => document.getElementById(id).value;
+  let company, ccEditing=false;
+  try{ company = Object.assign({}, COMPANY_DEFAULT, JSON.parse(localStorage.getItem(COMPANY_KEY) || "{}")); }
+  catch(e){ company = Object.assign({}, COMPANY_DEFAULT); }
+  const painsList = p => "<ul>" + String(p||"").split("\n").filter(x=>x.trim()).map(x=>`<li>${esc(x)}</li>`).join("") + "</ul>";
+
+  function renderCompany(){
+    const c = company;
+    document.getElementById("settingsBtn").textContent = "⚙ 会社設定：" + c.name + (c.fictional?"（架空）":"") + " ▾";
+    const s = document.getElementById("settings");
+    if(!ccEditing){
+      s.innerHTML = `<div class="company-card">
+        <div class="cc-head"><span class="cc-name">${esc(c.name)}</span>${c.fictional?'<span class="badge">架空（デモ用）</span>':''}
+          <button class="btn btn-ghost cc-edit" id="ccEdit">✏️ 編集</button></div>
+        <dl class="cc-grid">
+          <dt>業種</dt><dd>${esc(c.industry)}</dd>
+          <dt>所在地</dt><dd>${esc(c.location)}</dd>
+          <dt>規模</dt><dd>${esc(c.employees)}</dd>
+          <dt>取扱品</dt><dd>${esc(c.products)}</dd>
+          <dt>主な取引先</dt><dd>${esc(c.clients)}</dd>
+        </dl>
+        <div class="cc-pains"><div class="cc-label">社長が抱える悩み</div>${painsList(c.pains)}</div>
+        <div class="cc-note">${esc(c.note)}</div>
+      </div>`;
+      document.getElementById("ccEdit").onclick = ()=>{ ccEditing=true; renderCompany(); };
+    } else {
+      s.innerHTML = `<div class="company-card">
+        <div class="cc-head"><span class="cc-name">会社情報を編集</span></div>
+        <dl class="cc-grid">
+          <dt>会社名</dt><dd><input class="cc-input" id="f_name" value="${escA(c.name)}"></dd>
+          <dt>業種</dt><dd><input class="cc-input" id="f_industry" value="${escA(c.industry)}"></dd>
+          <dt>所在地</dt><dd><input class="cc-input" id="f_location" value="${escA(c.location)}"></dd>
+          <dt>規模</dt><dd><input class="cc-input" id="f_employees" value="${escA(c.employees)}"></dd>
+          <dt>取扱品</dt><dd><input class="cc-input" id="f_products" value="${escA(c.products)}"></dd>
+          <dt>主な取引先</dt><dd><input class="cc-input" id="f_clients" value="${escA(c.clients)}"></dd>
+          <dt>社長の悩み</dt><dd><textarea class="cc-input" id="f_pains" rows="3">${esc(c.pains)}</textarea><div class="cc-label">※1行に1つ</div></dd>
+          <dt>注記</dt><dd><textarea class="cc-input" id="f_note" rows="2">${esc(c.note)}</textarea></dd>
+        </dl>
+        <label class="cc-fic"><input type="checkbox" id="f_fictional" ${c.fictional?"checked":""}> 「架空」バッジを表示する</label>
+        <div class="cc-actions"><button class="btn btn-o" id="ccSave">保存</button><button class="btn btn-ghost" id="ccCancel">キャンセル</button><button class="btn btn-ghost" id="ccReset">初期に戻す</button></div>
+      </div>`;
+      document.getElementById("ccSave").onclick = ()=>{
+        company = { name:cval("f_name"), industry:cval("f_industry"), location:cval("f_location"), employees:cval("f_employees"),
+                    products:cval("f_products"), clients:cval("f_clients"), pains:cval("f_pains"), note:cval("f_note"),
+                    fictional:document.getElementById("f_fictional").checked };
+        localStorage.setItem(COMPANY_KEY, JSON.stringify(company)); ccEditing=false; renderCompany();
+      };
+      document.getElementById("ccCancel").onclick = ()=>{ ccEditing=false; renderCompany(); };
+      document.getElementById("ccReset").onclick = ()=>{
+        if(confirm("会社情報を初期（マルワ製作所）に戻します。よろしいですか？")){
+          company = Object.assign({}, COMPANY_DEFAULT); localStorage.setItem(COMPANY_KEY, JSON.stringify(company)); renderCompany();
+        }
+      };
+    }
+  }
+  renderCompany();
 
   document.getElementById("sample").addEventListener("click", async ()=>{
     if(busy) return;
